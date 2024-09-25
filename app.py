@@ -20,14 +20,17 @@ st.set_page_config(
 
 # Initialize AWS clients
 bedrock = boto3.client('bedrock-runtime', region_name='us-east-1')
+bedrock_agent_runtime_client = boto3.client('bedrock-agent-runtime', region_name='us-east-1')
 s3 = boto3.client('s3')
 
 # create the prompt to be used with the generate experience
 def create_prompt(experience):
     prompt = f"""
+Based on the following information provided under 'Work Experience:', generate the 'Experience' section of a professional resume. Reword and enhance upon the details to make them into concise sentences that are more compelling and suitable for inclusion in a professional resume.
 
-
-Based on the following information provided under 'Work Experience:', generate the 'Experience' section of a professional resume. Reword and enhance upon the details to make them more compelling and suitable for inclusion in a professional resume.
+Do not include any personal information like name, contact details, or education.
+Do not massively expand on the information provided. If the user only gives a few sentences worth of detail simply rephrase and enhance those few sentences.
+Do not include any new numbers and percentages in terms of impact. The only quantification of impact should be whatever the user literally states.
 
 
 Please format the output as follows:
@@ -36,48 +39,45 @@ Please format the output as follows:
 ### Experience ###
 (Enhanced experience content here)
 
-
-Do not include any personal information like name, contact details, or education.
-Do not include any new numbers and percentages in terms of impact. The only quantification of impact should be whatever the user literally states.
-
-
 Work Experience:
 {experience}
 """
 
     return prompt
+
 def generate_experience(prompt):
     try:
-        # Knowledge base is currently using an s3 bucket with a good bit of info.
-        knowledge_base_id = "FROEVHOMYY"
-        model_arn = "amazon.titan-text-premier-v1:0" 
+        # Use the provided knowledge base ID and model ARN
+        knowledge_base_id = "FROEVHOMYY"  # Your knowledge base ID
+        model_arn = "amazon.titan-text-premier-v1:0"  # Your model ARN
 
         # Construct the payload for the RetrieveAndGenerate API
         payload = {
             "input": {
-                "text": prompt
+                "text": prompt  # The input text prompt for generation
             },
             "retrieveAndGenerateConfiguration": {
                 "knowledgeBaseConfiguration": {
-                    "knowledgeBaseId": knowledge_base_id,
-                    "modelArn": model_arn
+                    "knowledgeBaseId": knowledge_base_id,  # The ID of your knowledge base
+                    "modelArn": model_arn  # The ARN of the model to use
                 },
-                "type": "KNOWLEDGE_BASE"
+                "type": "KNOWLEDGE_BASE"  # Specifies to use the knowledge base
             }
         }
 
-        # Make the API call to the RetrieveAndGenerate function
-        response = bedrock.retrieve_and_generate(
-            input=payload['input'],
-            retrieveAndGenerateConfiguration=payload['retrieveAndGenerateConfiguration']
-        )
+        # Call the retrieve_and_generate method using the Bedrock Agent Runtime client
+        response = bedrock_agent_runtime_client.retrieve_and_generate(**payload)
 
-        # Debugging: Display the full response for insight
-        st.write("Full API Response:", response)
+        # Debugging: Print the entire response to understand the structure
+        st.write("Full Model Response:", response)
 
-        # Extract the generated text from the response
-        result = response.get('results', [])[0]  # Get the first result from the response
-        generated_text = result.get('outputText', '')  # Extract the 'outputText' field
+        # Check if the 'output' key exists and contains 'text'
+        if 'output' in response and 'text' in response['output']:
+            # Extract the generated text from the response
+            generated_text = response['output']['text']
+        else:
+            st.error("The response does not contain the expected 'output' field or it's empty.")
+            return ""
 
         return generated_text
 
