@@ -46,8 +46,8 @@ Work Experience:
 def generate_experience(prompt):
     try:
         # Use the provided knowledge base ID and model ARN
-        knowledge_base_id = "FROEVHOMYY"  # Your knowledge base ID
-        model_arn = "amazon.titan-text-premier-v1:0"  # Your model ARN
+        knowledge_base_id = "FROEVHOMYY"
+        model_arn = "amazon.titan-text-premier-v1:0"
 
         # Construct the payload for the RetrieveAndGenerate API
         payload = {
@@ -56,8 +56,8 @@ def generate_experience(prompt):
             },
             "retrieveAndGenerateConfiguration": {
                 "knowledgeBaseConfiguration": {
-                    "knowledgeBaseId": knowledge_base_id,  # The ID of your knowledge base
-                    "modelArn": model_arn  # The ARN of the model to use
+                    "knowledgeBaseId": knowledge_base_id,
+                    "modelArn": model_arn
                 },
                 "type": "KNOWLEDGE_BASE"  # Specifies to use the knowledge base
             }
