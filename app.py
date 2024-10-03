@@ -1,3 +1,5 @@
+# app.py
+
 import streamlit as st
 import boto3
 import json
@@ -18,17 +20,30 @@ st.set_page_config(
 
 # Initialize AWS clients
 bedrock = boto3.client('bedrock-runtime', region_name='us-east-1')
-bedrock_agent_runtime_client = boto3.client('bedrock-agent-runtime', region_name='us-east-1')
 s3 = boto3.client('s3')
 
-# create the prompt to be used with the generate experience
-def create_prompt(experience):
-    prompt = f"""
-Based on the following information provided under 'Work Experience:', generate the 'Experience' section of a professional resume. Reword and enhance upon the details to make them into concise sentences that are more compelling and suitable for inclusion in a professional resume.
+def get_rag_data_from_pdf():
+    bucket_name = 'cihekwe-streamlittest-sept16'
+    key = 'resume-handout-508-compliant.pdf'
+    try:
+        response = s3.get_object(Bucket=bucket_name, Key=key)
+        pdf_content = response['Body'].read()
+        pdf_reader = PyPDF2.PdfReader(BytesIO(pdf_content))
+        text = ''
+        for page in pdf_reader.pages:
+            text += page.extract_text()
+        return text
+    except Exception as e:
+        st.error(f"Error fetching or parsing PDF from S3: {e}")
+        return ""
 
-Do not include any personal information like name, contact details, or education.
-Do not massively expand on the information provided. If the user only gives a few sentences worth of detail simply rephrase and enhance those few sentences.
-Do not include any new numbers and percentages in terms of impact. The only quantification of impact should be whatever the user literally states.
+def create_prompt(experience):
+    rag_data = get_rag_data_from_pdf()
+    prompt = f"""
+Here's a good bit of information about resumes generally speaking {rag_data}
+
+
+Based on the following information provided under 'Work Experience:', generate the 'Experience' section of a professional resume. Reword and enhance upon the details to make them more compelling and suitable for inclusion in a professional resume.
 
 
 Please format the output as follows:
@@ -36,6 +51,11 @@ Please format the output as follows:
 
 ### Experience ###
 (Enhanced experience content here)
+
+
+Do not include any personal information like name, contact details, or education.
+Do not include any new numbers and percentages in terms of impact. The only quantification of impact should be whatever the user literally states.
+
 
 Work Experience:
 {experience}
@@ -45,42 +65,27 @@ Work Experience:
 
 def generate_experience(prompt):
     try:
-        # Use the provided knowledge base ID and model ARN
-        knowledge_base_id = "FROEVHOMYY"
-        model_arn = "amazon.titan-text-premier-v1:0"
-
-        # Construct the payload for the RetrieveAndGenerate API
         payload = {
-            "input": {
-                "text": prompt  # The input text prompt for generation
-            },
-            "retrieveAndGenerateConfiguration": {
-                "knowledgeBaseConfiguration": {
-                    "knowledgeBaseId": knowledge_base_id,
-                    "modelArn": model_arn
-                },
-                "type": "KNOWLEDGE_BASE"  # Specifies to use the knowledge base
-            }
+            "inputText": prompt
         }
+        response = bedrock.invoke_model(
+            modelId='amazon.titan-text-premier-v1:0',
+            contentType='application/json',
+            accept='application/json',
+            body=json.dumps(payload).encode('utf-8')
+        )
+        response_body = response['body'].read()
+        result = json.loads(response_body.decode('utf-8'))
 
-        # Call the retrieve_and_generate method using the Bedrock Agent Runtime client
-        response = bedrock_agent_runtime_client.retrieve_and_generate(**payload)
+        # Debugging: Print or display the result
+        st.write("Model Response:", result)
 
-        # Debugging: Print the entire response to understand the structure
-        st.write("Full Model Response:", response)
-
-        # Check if the 'output' key exists and contains 'text'
-        if 'output' in response and 'text' in response['output']:
-            # Extract the generated text from the response
-            generated_text = response['output']['text']
-        else:
-            st.error("The response does not contain the expected 'output' field or it's empty.")
-            return ""
+        # Extract the generated text from the response
+        generated_text = result.get('results', [])[0].get('outputText', '')
 
         return generated_text
-
     except Exception as e:
-        st.error(f"An error occurred while using the RetrieveAndGenerate function: {e}")
+        st.error(f"An error occurred while invoking the model: {e}")
         return ""
 
 def parse_experience(experience_text):
