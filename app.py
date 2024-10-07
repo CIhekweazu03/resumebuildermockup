@@ -78,7 +78,7 @@ def generate_experience(prompt):
         request_body = json.dumps({
             "anthropic_version": "bedrock-2023-05-31",
             "max_tokens": 50000,
-            "temperature": 0.05,
+            "temperature": 0.7,
             "messages": [
                 {"role": "user", "content": prompt}
             ]
