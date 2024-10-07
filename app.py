@@ -23,24 +23,30 @@ bedrock = boto3.client('bedrock-runtime', region_name='us-east-1')
 s3 = boto3.client('s3')
 
 def get_rag_data_from_pdf():
-    bucket_name = 'cihekwe-streamlittest-sept16'
-    key = 'resume-handout-508-compliant.pdf'
-    try:
-        response = s3.get_object(Bucket=bucket_name, Key=key)
-        pdf_content = response['Body'].read()
-        pdf_reader = PyPDF2.PdfReader(BytesIO(pdf_content))
-        text = ''
-        for page in pdf_reader.pages:
-            text += page.extract_text()
-        return text
-    except Exception as e:
-        st.error(f"Error fetching or parsing PDF from S3: {e}")
-        return ""
+    bucket_name = 'resume-builder-mockup-bucket'
+    keys = ['Federal Resume Samples.pdf', 'sample-resume.pdf']
+    combined_text = ''
+
+    for key in keys:
+        try:
+            response = s3.get_object(Bucket=bucket_name, Key=key)
+            pdf_content = response['Body'].read()
+            pdf_reader = PyPDF2.PdfReader(BytesIO(pdf_content))
+            text = ''
+            for page in pdf_reader.pages:
+                text += page.extract_text()
+            combined_text += text + '\n'  # Append text from each PDF with a separator
+        except Exception as e:
+            st.error(f"Error fetching or parsing PDF from S3 for {key}: {e}")
+            continue  # Skip to the next key in case of an error
+    
+    return combined_text
 
 def create_prompt(experience):
     rag_data = get_rag_data_from_pdf()
     prompt = f"""
-Here's a good bit of information about resumes generally speaking {rag_data}
+Human:
+Here's a good bit of information about resumes generally speaking and a few good examples of how resumes should read {rag_data}
 
 
 Based on the following information provided under 'Work Experience:', generate the 'Experience' section of a professional resume. Reword and enhance upon the details to make them more compelling and suitable for inclusion in a professional resume.
@@ -55,10 +61,11 @@ Please format the output as follows:
 
 Do not include any personal information like name, contact details, or education.
 Do not include any new numbers and percentages in terms of impact. The only quantification of impact should be whatever the user literally states.
-
+If the user only gives limited input in terms of experience, only reword and slightly enhance that experience rather than adding a great amount of detail.
 
 Work Experience:
 {experience}
+Assistant:
 """
 
     return prompt
@@ -66,13 +73,21 @@ Work Experience:
 def generate_experience(prompt):
     try:
         payload = {
-            "inputText": prompt
+            "prompt": prompt
         }
+        request_body = json.dumps({
+            "anthropic_version": "bedrock-2023-05-31",
+            "max_tokens": 50000,
+            "temperature": 0.05,
+            "messages": [
+                {"role": "user", "content": prompt}
+            ]
+        })
         response = bedrock.invoke_model(
-            modelId='amazon.titan-text-premier-v1:0',
+            modelId='anthropic.claude-3-5-sonnet-20240620-v1:0',
             contentType='application/json',
             accept='application/json',
-            body=json.dumps(payload).encode('utf-8')
+            body=request_body
         )
         response_body = response['body'].read()
         result = json.loads(response_body.decode('utf-8'))
@@ -81,9 +96,15 @@ def generate_experience(prompt):
         st.write("Model Response:", result)
 
         # Extract the generated text from the response
-        generated_text = result.get('results', [])[0].get('outputText', '')
+        content = result.get('content', [])
+        if content and isinstance(content, list) and 'text' in content[0]:
+            generated_text = content[0]['text']
+        else:
+            st.error("Unexpected response format from the model.")
+            return ""
 
         return generated_text
+
     except Exception as e:
         st.error(f"An error occurred while invoking the model: {e}")
         return ""
